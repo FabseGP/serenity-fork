@@ -33,6 +33,7 @@ use std::sync::Arc;
 #[cfg(feature = "framework")]
 use std::sync::OnceLock;
 use std::time::Duration;
+use tokio::sync::Mutex;
 
 use futures::future::BoxFuture;
 #[cfg(feature = "tracing_instrument")]
@@ -354,7 +355,7 @@ impl IntoFuture for ClientBuilder {
 
             let client = Client {
                 data,
-                shard_manager,
+                shard_manager: Arc::new(Mutex::new(shard_manager)),
                 #[cfg(feature = "voice")]
                 voice_manager: self.voice_manager,
                 ws_url,
@@ -452,7 +453,7 @@ pub struct Client {
     /// });
     /// # }
     /// ```
-    pub shard_manager: ShardManager,
+    pub shard_manager: Arc<Mutex<ShardManager>>,
     /// The voice manager for the client.
     ///
     /// This is an ergonomic structure for interfacing over shards' voice
@@ -759,7 +760,8 @@ impl Client {
 
         debug!("Initializing shard info: {} - {}/{}", start_shard, init, total_shards);
 
-        self.shard_manager.run(start_shard, init, total_shards).await.map_err(Error::Gateway)
+        let mut shard_manager = self.shard_manager.lock().await;
+        shard_manager.run(start_shard, init, total_shards).await.map_err(Error::Gateway)
     }
 }
 
